@@ -48,17 +48,12 @@ export async function createAccounts(
     for (const account of accounts) {
         let error: Error | null = null;
         try {
-            await createAssociatedTokenAccount(
-                connection,
-                feePayer,
-                account.mint,
-                feePayer.publicKey,
-            );
+            await createAssociatedTokenAccount(connection, feePayer, account.mint, feePayer.publicKey);
         } catch (e) {
             error = e as Error;
         }
 
-        results.push({...account, error})
+        results.push({ ...account, error });
     }
 
     return results;

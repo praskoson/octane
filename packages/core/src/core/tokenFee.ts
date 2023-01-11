@@ -5,7 +5,7 @@ type SerializableTokenFee = {
     account: string;
     decimals: number;
     fee: number;
-}
+};
 
 export class TokenFee {
     public mint: PublicKey;
@@ -25,7 +25,7 @@ export class TokenFee {
             mint: this.mint.toBase58(),
             account: this.account.toBase58(),
             decimals: this.decimals,
-            fee: Number(this.fee)
+            fee: Number(this.fee),
         };
     }
 

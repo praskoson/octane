@@ -11,7 +11,7 @@ module.exports = {
                         // adding custom entry points
                         cli: path.resolve(process.cwd(), 'src/cli.ts'),
                     }));
-                }
+                },
             };
         }
         return config;

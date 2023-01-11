@@ -3,11 +3,7 @@ import nacl from 'tweetnacl';
 import { Keypair, Message, PublicKey } from '@solana/web3.js';
 
 function bufferToSign(key: string, serializedMessage: Buffer): Buffer {
-    return Buffer.concat([
-        Buffer.from('octane-message-token', 'utf-8'),
-        Buffer.from(key),
-        serializedMessage
-    ]);
+    return Buffer.concat([Buffer.from('octane-message-token', 'utf-8'), Buffer.from(key), serializedMessage]);
 }
 
 /**

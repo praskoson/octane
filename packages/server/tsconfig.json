@@ -16,9 +16,7 @@
         "incremental": true,
         "jsx": "preserve",
         "paths": {
-            "@solana/spl-token": [
-                "./node_modules/@solana/spl-token"
-            ],
+            "@solana/spl-token": ["./node_modules/@solana/spl-token"]
         }
     },
     "include": ["pages", "src"],

@@ -41,13 +41,11 @@ export async function signGeneratedTransaction(
     feePayer: Keypair,
     messageTokenKey: string,
     messageToken: string,
-    cache: Cache,
+    cache: Cache
 ): Promise<{ signature: string }> {
     // Check that we actually produced this transaction previously
-    if (!MessageToken.isValid(
-        messageTokenKey, transaction.compileMessage(), messageToken, feePayer.publicKey
-    )) {
-        throw new Error('Message token isn\'t valid');
+    if (!MessageToken.isValid(messageTokenKey, transaction.compileMessage(), messageToken, feePayer.publicKey)) {
+        throw new Error("Message token isn't valid");
     }
 
     // Prevent multiple signature requests of the same transaction
@@ -57,23 +55,20 @@ export async function signGeneratedTransaction(
 
     // Check that user signed  and Octane hasn't yet
 
-    if (transaction.signatures.length < 2) { // user + fee payer
+    if (transaction.signatures.length < 2) {
+        // user + fee payer
         throw new Error('Transaction should have at least 2 pubkeys as signers');
     }
 
-    const hasFeePayerSignaturePlaceholder = (
-        transaction.signatures[0].publicKey.equals(feePayer.publicKey)
-        && transaction.signatures[0].signature === null
-    );
-    const hasAllOtherSignatures = transaction.signatures.slice(1).every(
-        (pair) => pair.signature !== null
-    );
+    const hasFeePayerSignaturePlaceholder =
+        transaction.signatures[0].publicKey.equals(feePayer.publicKey) && transaction.signatures[0].signature === null;
+    const hasAllOtherSignatures = transaction.signatures.slice(1).every((pair) => pair.signature !== null);
 
     if (!hasFeePayerSignaturePlaceholder) {
-        throw new Error('Fee payer\'s signature doesn\'t exist or already filled');
+        throw new Error("Fee payer's signature doesn't exist or already filled");
     }
     if (!hasAllOtherSignatures) {
-        throw new Error('Missing user\'s signature');
+        throw new Error("Missing user's signature");
     }
 
     transaction.partialSign(feePayer);
@@ -81,10 +76,7 @@ export async function signGeneratedTransaction(
     // .serialize() verifies all signatures
     const serializedTransaction = transaction.serialize();
 
-    await simulateRawTransaction(
-        connection,
-        serializedTransaction,
-    );
+    await simulateRawTransaction(connection, serializedTransaction);
 
     return { signature: base58.encode(transaction.signature!) };
 }

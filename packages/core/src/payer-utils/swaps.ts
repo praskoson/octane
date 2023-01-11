@@ -15,9 +15,7 @@ export async function loadSwapRoutesForTokenFees(
         if (account.amount === 0n) {
             continue;
         }
-        const route = (await getRoutes(
-            tokenFee.mint, NATIVE_MINT, account.amount, slippage
-        ))[0];
+        const route = (await getRoutes(tokenFee.mint, NATIVE_MINT, account.amount, slippage))[0];
         if (route.outAmount < thresholdInLamports) {
             continue;
         }
@@ -33,11 +31,7 @@ export async function executeSwapByRoute(connection: Connection, feePayer: Keypa
         if (transaction === null) {
             continue;
         }
-        const txid = await connection.sendTransaction(
-            transaction,
-            [feePayer],
-            { skipPreflight: true }
-        );
+        const txid = await connection.sendTransaction(transaction, [feePayer], { skipPreflight: true });
         await connection.confirmTransaction(txid);
         txids.push(txid);
     }

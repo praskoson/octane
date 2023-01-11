@@ -3,20 +3,20 @@ import { NextApiRequest } from 'next';
 
 type AllowAllConfig = {
     type: 'allowAll';
-}
+};
 
 type ReCaptchaConfig = {
     type: 'reCaptcha';
     reCaptchaProjectId: string;
     reCaptchaSiteKey: string;
     reCaptchaMinScore: number;
-}
+};
 
 export type ReturnSignatureConfigField = AllowAllConfig | ReCaptchaConfig;
 
 export async function isReturnedSignatureAllowed(
     request: NextApiRequest,
-    config: ReturnSignatureConfigField,
+    config: ReturnSignatureConfigField
 ): Promise<boolean> {
     if (config.type === 'allowAll') {
         return true;

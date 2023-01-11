@@ -3,9 +3,11 @@ import {
     buildWhirlpoolClient,
     PDAUtil,
     PoolUtil,
-    SwapQuote, swapQuoteByInputToken,
+    SwapQuote,
+    swapQuoteByInputToken,
     Whirlpool,
-    WhirlpoolContext, WhirlpoolIx,
+    WhirlpoolContext,
+    WhirlpoolIx,
 } from '@orca-so/whirlpools-sdk';
 import { Wallet } from '@project-serum/anchor';
 import { AddressUtil, Percentage } from '@orca-so/common-sdk';
@@ -58,7 +60,7 @@ export async function getPoolAndQuote(
         slippingTolerance,
         WHIRLPOOL_PROGRAM_ID,
         context.fetcher,
-        true,
+        true
     );
     return [whirlpool, quote];
 }
@@ -69,39 +71,27 @@ export async function getSwapInstructions(
     context: WhirlpoolContext,
     whirlpool: Whirlpool,
     quote: SwapQuote,
-    rentExemptBalance: number,
+    rentExemptBalance: number
 ): Promise<TransactionInstruction[]> {
     const associatedSOLAddress = await getAssociatedTokenAddress(NATIVE_MINT, user);
     const setupInstructions = [
-        createAssociatedTokenAccountInstruction(
-            feePayer,
-            associatedSOLAddress,
-            user,
-            NATIVE_MINT
-        )
+        createAssociatedTokenAccountInstruction(feePayer, associatedSOLAddress, user, NATIVE_MINT),
     ];
 
     const data = whirlpool.getData();
-    const swapInstructions = WhirlpoolIx.swapIx(
-        context.program,
-        {
-            ...quote,
-            whirlpool: whirlpool.getAddress(),
-            tokenAuthority: user,
-            tokenOwnerAccountA: await getAssociatedTokenAddress(data.tokenMintA, user),
-            tokenVaultA: data.tokenVaultA,
-            tokenOwnerAccountB: await getAssociatedTokenAddress(data.tokenMintB, user),
-            tokenVaultB: data.tokenVaultB,
-            oracle: PDAUtil.getOracle(WHIRLPOOL_PROGRAM_ID, whirlpool.getAddress()).publicKey
-        }
-    ).instructions;
+    const swapInstructions = WhirlpoolIx.swapIx(context.program, {
+        ...quote,
+        whirlpool: whirlpool.getAddress(),
+        tokenAuthority: user,
+        tokenOwnerAccountA: await getAssociatedTokenAddress(data.tokenMintA, user),
+        tokenVaultA: data.tokenVaultA,
+        tokenOwnerAccountB: await getAssociatedTokenAddress(data.tokenMintB, user),
+        tokenVaultB: data.tokenVaultB,
+        oracle: PDAUtil.getOracle(WHIRLPOOL_PROGRAM_ID, whirlpool.getAddress()).publicKey,
+    }).instructions;
 
     const cleanupInstructions = [
-        createCloseAccountInstruction(
-            associatedSOLAddress,
-            user,
-            user
-        ),
+        createCloseAccountInstruction(associatedSOLAddress, user, user),
         // createAssociatedTokenAccountInstruction transfers rent-exemption minimum from Octane to newly created token account.
         // when createCloseAccountInstruction sent the SOL output to user, it also included this rent-exemption minimum.
         SystemProgram.transfer({
