@@ -1,4 +1,4 @@
-import { PublicKey, sendAndConfirmRawTransaction, Transaction } from '@solana/web3.js';
+import { sendAndConfirmRawTransaction, Transaction } from '@solana/web3.js';
 import type { NextApiRequest, NextApiResponse } from 'next';
 import base58 from 'bs58';
 import { signWithTokenFee, core } from '@solana/octane-core';
@@ -45,7 +45,12 @@ export default async function (request: NextApiRequest, response: NextApiRespons
         );
 
         if (config.returnSignature !== undefined) {
-            if (!(await isReturnedSignatureAllowed(request, config.returnSignature as ReturnSignatureConfigField))) {
+            if (
+                !(await isReturnedSignatureAllowed(
+                    request,
+                    config.returnSignature as unknown as ReturnSignatureConfigField
+                ))
+            ) {
                 response.status(400).send({ status: 'error', message: 'anti-spam check failed' });
                 return;
             }
@@ -55,7 +60,13 @@ export default async function (request: NextApiRequest, response: NextApiRespons
 
         transaction.addSignature(ENV_SECRET_KEYPAIR.publicKey, Buffer.from(base58.decode(signature)));
 
-        await sendAndConfirmRawTransaction(connection, transaction.serialize(), { commitment: 'confirmed' });
+        const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+        await sendAndConfirmRawTransaction(
+            connection,
+            transaction.serialize(),
+            { signature, lastValidBlockHeight, blockhash },
+            { commitment: 'confirmed' }
+        );
 
         // Respond with the confirmed transaction signature
         response.status(200).send({ status: 'ok', signature });
