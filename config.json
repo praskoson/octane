@@ -5,26 +5,6 @@
     "corsOrigin": true,
     "returnSignature": null,
     "endpoints": {
-        "transfer": {
-            "tokens": [
-                {
-                    "mint": "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
-                    "account": "AhT8tytX8PcWhMAtZWmMzq3nkuY4qrpzGjnJqCLY8ZMw",
-                    "decimals": 5,
-                    "fee": 10000000
-                }
-            ]
-        },
-        "createAssociatedTokenAccount": {
-            "tokens": [
-                {
-                    "mint": "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
-                    "account": "AhT8tytX8PcWhMAtZWmMzq3nkuY4qrpzGjnJqCLY8ZMw",
-                    "decimals": 5,
-                    "fee": 10000000
-                }
-            ]
-        },
         "whirlpoolsSwap": {
             "tokens": [
                 {
