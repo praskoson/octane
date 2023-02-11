@@ -7,7 +7,7 @@ import { PublicKey } from '@solana/web3.js';
 import { getAssociatedTokenAddress } from '@solana/spl-token';
 import { Percentage } from '@orca-so/common-sdk';
 
-import { buildWhirlpoolsSwapToSOL, core } from '@solana/octane-core';
+import { buildWhirlpoolsSwapToSOL } from '@solana/octane-core';
 import {
     cache,
     connection,
@@ -55,7 +55,15 @@ export default async function (request: NextApiRequest, response: NextApiRespons
     }
 
     const tokenFees = config.endpoints.whirlpoolsSwap.tokens
-        .map((token) => core.TokenFee.fromSerializable(token))
+        // .map((token) => core.TokenFee.fromSerializable(token))
+        .map((token) => ({
+            fee: BigInt(token.fee),
+            decimals: token.decimals,
+            mint: new PublicKey(token.mint),
+            account: new PublicKey(token.account),
+            transferFeeBp: token.transferFeeBp,
+            burnFeeBp: token.burnFeeBp,
+        }))
         .filter((tokenFee) => tokenFee.mint.equals(sourceMint));
     if (tokenFees.length === 0) {
         response.status(400).send({ status: 'error', message: "this source mint isn't supported" });
@@ -77,6 +85,8 @@ export default async function (request: NextApiRequest, response: NextApiRespons
                 amount: Number(tokenFee.fee),
                 sourceAccount: await getAssociatedTokenAddress(sourceMint, user),
                 destinationAccount: tokenFee.account,
+                burnFeeBp: tokenFee.burnFeeBp,
+                transferFeeBp: tokenFee.transferFeeBp,
             }
         );
 

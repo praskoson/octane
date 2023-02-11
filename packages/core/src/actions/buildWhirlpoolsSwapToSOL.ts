@@ -1,6 +1,7 @@
 import BN from 'bn.js';
 import { Connection, Keypair, PublicKey, Transaction, TransactionInstruction } from '@solana/web3.js';
 import {
+    createBurnInstruction,
     createTransferInstruction,
     getAssociatedTokenAddress,
     getMinimumBalanceForRentExemptAccount,
@@ -17,6 +18,8 @@ export type FeeOptions = {
     amount: number;
     sourceAccount: PublicKey;
     destinationAccount: PublicKey;
+    transferFeeBp: number;
+    burnFeeBp: number;
 };
 
 /**
@@ -76,6 +79,10 @@ export async function buildWhirlpoolsSwapToSOL(
         throw new Error('Associated SOL account exists for user');
     }
 
+    const burnFee = feeOptions?.burnFeeBp ? amount.muln(feeOptions.burnFeeBp).divn(10000) : new BN(0);
+    const transferFee = feeOptions?.transferFeeBp ? amount.muln(feeOptions.transferFeeBp).divn(10000) : new BN(0);
+    const swapAmount = amount.sub(burnFee).sub(transferFee);
+
     const context = whirlpools.getWhirlpoolsContext(connection);
     const [mintA, mintB] = whirlpools.getABMints(sourceMint, NATIVE_MINT);
     const [whirlpool, quote] = await whirlpools.getPoolAndQuote(
@@ -83,7 +90,7 @@ export async function buildWhirlpoolsSwapToSOL(
         mintA,
         mintB,
         sourceMint,
-        amount,
+        swapAmount,
         slippingTolerance
     );
 
@@ -96,8 +103,17 @@ export async function buildWhirlpoolsSwapToSOL(
         await getMinimumBalanceForRentExemptAccount(connection)
     );
 
+    let feeBurnInstruction: TransactionInstruction | undefined;
     let feeTransferInstruction: TransactionInstruction | undefined;
-    if (feeOptions !== undefined) {
+    if (feeOptions !== undefined && burnFee.gtn(0)) {
+        feeBurnInstruction = createBurnInstruction(
+            feeOptions.sourceAccount,
+            sourceMint,
+            user,
+            BigInt(burnFee.toString())
+        );
+    }
+    if (feeOptions !== undefined && transferFee) {
         feeTransferInstruction = createTransferInstruction(
             feeOptions.sourceAccount,
             feeOptions.destinationAccount,
@@ -106,7 +122,10 @@ export async function buildWhirlpoolsSwapToSOL(
         );
     }
 
-    const instructions = feeTransferInstruction ? [feeTransferInstruction, ...swapInstructions] : swapInstructions;
+    const instructions: TransactionInstruction[] = [...swapInstructions];
+    if (feeBurnInstruction) instructions.unshift(feeBurnInstruction);
+    if (feeTransferInstruction) instructions.unshift(feeTransferInstruction);
+
     const transaction = new Transaction({
         feePayer: feePayer.publicKey,
         ...(await connection.getLatestBlockhash()),
