@@ -118,7 +118,7 @@ export async function buildWhirlpoolsSwapToSOL(
             feeOptions.sourceAccount,
             feeOptions.destinationAccount,
             user,
-            feeOptions.amount
+            BigInt(transferFee.toString())
         );
     }
 
