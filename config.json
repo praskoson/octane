@@ -34,6 +34,14 @@
                     "fee": 10000000,
                     "burnFeeBp": 250,
                     "transferFeeBp": 250
+                },
+                {
+                    "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+                    "account": "Cc6xyysCacQJEmoaxYLnX3WrD2xm381Wh4gmqUFWCrn2",
+                    "decimals": 6,
+                    "fee": 10000000,
+                    "burnFeeBp": 0,
+                    "transferFeeBp": 250
                 }
             ]
         }

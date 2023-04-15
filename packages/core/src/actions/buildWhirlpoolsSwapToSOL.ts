@@ -113,7 +113,7 @@ export async function buildWhirlpoolsSwapToSOL(
             BigInt(burnFee.toString())
         );
     }
-    if (feeOptions !== undefined && transferFee) {
+    if (feeOptions !== undefined && transferFee.gtn(0)) {
         feeTransferInstruction = createTransferInstruction(
             feeOptions.sourceAccount,
             feeOptions.destinationAccount,
