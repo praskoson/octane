@@ -13,6 +13,7 @@ import type { Cache } from 'cache-manager';
 
 import { simulateRawTransaction, isMainnetBetaCluster, MessageToken } from '../core';
 import { whirlpools } from '../swapProviders';
+import { getPriorityFeeInstructions } from './applyPriorityFeesToTransaction';
 
 export type FeeOptions = {
     amount: number;
@@ -129,7 +130,9 @@ export async function buildWhirlpoolsSwapToSOL(
     const transaction = new Transaction({
         feePayer: feePayer.publicKey,
         ...(await connection.getLatestBlockhash()),
-    }).add(...instructions);
+    })
+        .add(...instructions)
+        .add(...getPriorityFeeInstructions());
 
     await simulateRawTransaction(connection, transaction.serialize({ verifySignatures: false }));
 
