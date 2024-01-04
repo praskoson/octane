@@ -1,5 +1,5 @@
 {
-    "rpcUrl": "https://radial-few-vineyard.solana-mainnet.discover.quiknode.pro/f4ee50b169a4ed2711b60b47cd20548787e555af",
+    "rpcUrl": "https://mainnet.helius-rpc.com/?api-key=15d5a3af-42ab-405f-9374-c297edc0dc9b",
     "maxSignatures": 2,
     "lamportsPerSignature": 5000,
     "corsOrigin": true,
