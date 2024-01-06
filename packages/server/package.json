@@ -19,9 +19,9 @@
     },
     "dependencies": {
         "@solana/octane-core": "*",
-        "@solana/spl-token": "^0.2.0",
-        "@solana/web3.js": "^1.48.0",
-        "axios": "^0.27.2",
+        "@solana/spl-token": "^0.3.10",
+        "@solana/web3.js": "^1.87.6",
+        "axios": "^1.6.4",
         "bs58": "^5.0.0",
         "cache-manager": "^4.1.0",
         "commander": "^9.4.0",

@@ -1,4 +1,4 @@
-import { sendAndConfirmRawTransaction, Transaction } from '@solana/web3.js';
+import { VersionedTransaction } from '@solana/web3.js';
 import type { NextApiRequest, NextApiResponse } from 'next';
 import base58 from 'bs58';
 import { signGeneratedTransaction, whirlpools } from '@solana/octane-core';
@@ -16,9 +16,9 @@ export default async function (request: NextApiRequest, response: NextApiRespons
         return;
     }
 
-    let transaction: Transaction;
+    let transaction: VersionedTransaction;
     try {
-        transaction = Transaction.from(base58.decode(serialized));
+        transaction = VersionedTransaction.deserialize(base58.decode(serialized));
     } catch (e) {
         response.status(400).send({ status: 'error', message: "can't decode transaction" });
         return;
@@ -42,7 +42,17 @@ export default async function (request: NextApiRequest, response: NextApiRespons
 
         transaction.addSignature(ENV_SECRET_KEYPAIR.publicKey, Buffer.from(base58.decode(signature)));
 
-        await sendAndConfirmRawTransaction(connection, transaction.serialize(), { commitment: 'confirmed' });
+        const rawTransaction = transaction.serialize();
+        const txid = await connection.sendRawTransaction(rawTransaction, {
+            skipPreflight: true,
+            maxRetries: 2,
+        });
+        const latestBlockHash = await connection.getLatestBlockhash();
+
+        await connection.confirmTransaction({
+            signature: txid,
+            ...latestBlockHash,
+        });
 
         // Respond with the confirmed transaction signature
         response.status(200).send({ status: 'ok', signature });

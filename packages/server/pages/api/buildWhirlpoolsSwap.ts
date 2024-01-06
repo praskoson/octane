@@ -1,11 +1,9 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import base58 from 'bs58';
 import BN from 'bn.js';
-import Decimal from 'decimal.js';
 
 import { PublicKey } from '@solana/web3.js';
 import { getAssociatedTokenAddress } from '@solana/spl-token';
-import { Percentage } from '@orca-so/common-sdk';
 
 import { buildWhirlpoolsSwapToSOL } from '@solana/octane-core';
 import {
@@ -46,14 +44,6 @@ export default async function (request: NextApiRequest, response: NextApiRespons
         return;
     }
 
-    let slippingTolerance: Percentage;
-    try {
-        slippingTolerance = Percentage.fromDecimal(new Decimal(request.body?.slippingTolerance));
-    } catch {
-        response.status(400).send({ status: 'error', message: 'missing or invalid "slippingTolerance" parameter' });
-        return;
-    }
-
     const tokenFees = config.endpoints.whirlpoolsSwap.tokens
         // .map((token) => core.TokenFee.fromSerializable(token))
         .map((token) => ({
@@ -78,7 +68,6 @@ export default async function (request: NextApiRequest, response: NextApiRespons
             user,
             sourceMint,
             amount,
-            slippingTolerance,
             cache,
             3000,
             {
@@ -95,10 +84,10 @@ export default async function (request: NextApiRequest, response: NextApiRespons
                 response.status(400).send({ status: 'error', message: 'anti-spam check failed' });
                 return;
             }
-            transaction.sign(ENV_SECRET_KEYPAIR);
+            transaction.sign([ENV_SECRET_KEYPAIR]);
             response.status(200).send({
                 status: 'ok',
-                transaction: base58.encode(transaction.serialize({ verifySignatures: false })),
+                transaction: base58.encode(transaction.serialize()),
                 quote,
                 messageToken,
             });
@@ -108,7 +97,7 @@ export default async function (request: NextApiRequest, response: NextApiRespons
         // Respond with the confirmed transaction signature
         response.status(200).send({
             status: 'ok',
-            transaction: base58.encode(transaction.serialize({ verifySignatures: false })),
+            transaction: base58.encode(transaction.serialize()),
             quote,
             messageToken,
         });

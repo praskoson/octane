@@ -1,6 +1,6 @@
-import { Connection, Keypair, Transaction } from '@solana/web3.js';
+import { Connection, Keypair, Transaction, VersionedTransaction } from '@solana/web3.js';
 import type { Cache } from 'cache-manager';
-import { simulateRawTransaction, MessageToken } from '../core';
+import { MessageToken, simulateV0Transaction } from '../core';
 import base58 from 'bs58';
 
 /**
@@ -37,14 +37,14 @@ import base58 from 'bs58';
  */
 export async function signGeneratedTransaction(
     connection: Connection,
-    transaction: Transaction,
+    transaction: VersionedTransaction,
     feePayer: Keypair,
     messageTokenKey: string,
     messageToken: string,
     cache: Cache
 ): Promise<{ signature: string }> {
     // Check that we actually produced this transaction previously
-    if (!MessageToken.isValid(messageTokenKey, transaction.compileMessage(), messageToken, feePayer.publicKey)) {
+    if (!MessageToken.isValid(messageTokenKey, transaction.message, messageToken, feePayer.publicKey)) {
         throw new Error("Message token isn't valid");
     }
 
@@ -60,10 +60,20 @@ export async function signGeneratedTransaction(
         throw new Error('Transaction should have at least 2 pubkeys as signers');
     }
 
-    const hasFeePayerSignaturePlaceholder =
-        transaction.signatures[0].publicKey.equals(feePayer.publicKey) && transaction.signatures[0].signature === null;
-    const hasAllOtherSignatures = transaction.signatures.slice(1).every((pair) => pair.signature !== null);
+    const isEmptyUint8Array = (arr: Uint8Array): boolean => {
+        for (let i = 0; i < arr.length; i++) {
+            if (arr[i] !== 0) {
+                return false;
+            }
+        }
 
+        // If all elements are zero
+        return true;
+    };
+
+    const hasFeePayerSignaturePlaceholder = transaction.signatures[0] && isEmptyUint8Array(transaction.signatures[0]);
+
+    const hasAllOtherSignatures = transaction.signatures.slice(1).every((sig) => !isEmptyUint8Array(sig));
     if (!hasFeePayerSignaturePlaceholder) {
         throw new Error("Fee payer's signature doesn't exist or already filled");
     }
@@ -71,12 +81,11 @@ export async function signGeneratedTransaction(
         throw new Error("Missing user's signature");
     }
 
-    transaction.partialSign(feePayer);
+    transaction.sign([feePayer]);
 
     // .serialize() verifies all signatures
-    const serializedTransaction = transaction.serialize();
+    transaction.serialize();
+    await simulateV0Transaction(connection, transaction);
 
-    await simulateRawTransaction(connection, serializedTransaction);
-
-    return { signature: base58.encode(transaction.signature!) };
+    return { signature: base58.encode(transaction.signatures[0]!) };
 }

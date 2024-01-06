@@ -1,19 +1,18 @@
-import BN from 'bn.js';
-import { Connection, Keypair, PublicKey, Transaction, TransactionInstruction } from '@solana/web3.js';
+import { NATIVE_MINT, getAssociatedTokenAddress } from '@solana/spl-token';
 import {
-    createBurnInstruction,
-    createTransferInstruction,
-    getAssociatedTokenAddress,
-    getMinimumBalanceForRentExemptAccount,
-    NATIVE_MINT,
-} from '@solana/spl-token';
-import { SwapQuote } from '@orca-so/whirlpools-sdk';
-import { Percentage } from '@orca-so/common-sdk';
+    AddressLookupTableAccount,
+    Connection,
+    Keypair,
+    PublicKey,
+    TransactionInstruction,
+    TransactionMessage,
+    VersionedTransaction,
+} from '@solana/web3.js';
+import BN from 'bn.js';
 import type { Cache } from 'cache-manager';
 
-import { simulateRawTransaction, isMainnetBetaCluster, MessageToken } from '../core';
-import { whirlpools } from '../swapProviders';
-import { getPriorityFeeInstructions } from './applyPriorityFeesToTransaction';
+import { MessageToken, isMainnetBetaCluster, simulateV0Transaction } from '../core';
+import { MESSAGE_TOKEN_KEY } from '../swapProviders/whirlpools';
 
 export type FeeOptions = {
     amount: number;
@@ -61,11 +60,10 @@ export async function buildWhirlpoolsSwapToSOL(
     user: PublicKey,
     sourceMint: PublicKey,
     amount: BN,
-    slippingTolerance: Percentage,
     cache: Cache,
     sameMintTimeout = 3000,
     feeOptions?: FeeOptions
-): Promise<{ transaction: Transaction; quote: QuoteResponse; messageToken: string }> {
+): Promise<{ transaction: VersionedTransaction; quote: QuoteResponse; messageToken: string }> {
     // Connection's genesis hash is cached to prevent an extra RPC query to the node on each call.
     const genesisHashKey = `genesis/${connection.rpcEndpoint}`;
     let genesisHash = await cache.get<string>(genesisHashKey);
@@ -107,7 +105,6 @@ export async function buildWhirlpoolsSwapToSOL(
     params.append('inputMint', sourceMint.toString());
     params.append('outputMint', outputMint);
     params.append('amount', swapAmount.toString()); // Convert number to string
-    params.append('asLegacyTransaction', 'true');
     // params.append('slippageBps', slippageBps.toString());
 
     const url = new URL('https://quote-api.jup.ag/v6/quote');
@@ -124,7 +121,6 @@ export async function buildWhirlpoolsSwapToSOL(
                 quoteResponse,
                 userPublicKey: user.toString(),
                 wrapAndUnwrapSol: true,
-                asLegacyTransaction: true,
             }),
         })
     ).json();
@@ -137,6 +133,7 @@ export async function buildWhirlpoolsSwapToSOL(
         setupInstructions, // Setup missing ATA for the users.
         swapInstruction: swapInstructionPayload, // The actual swap instruction.
         cleanupInstruction, // Unwrap the SOL if `wrapAndUnwrapSol = true`.
+        addressLookupTableAddresses,
     } = instructions;
 
     const deserializeInstruction = (instruction: any) => {
@@ -156,19 +153,41 @@ export async function buildWhirlpoolsSwapToSOL(
         }
     };
 
-    // const blockhash = (await connection.getLatestBlockhash()).blockhash;
-    // const;
+    const getAddressLookupTableAccounts = async (keys: string[]): Promise<AddressLookupTableAccount[]> => {
+        const addressLookupTableAccountInfos = await connection.getMultipleAccountsInfo(
+            keys.map((key) => new PublicKey(key))
+        );
 
-    // const messageV0 = new TransactionMessage({
-    //     payerKey: payerPublicKey,
-    //     recentBlockhash: blockhash,
-    //     instructions: [
-    //         // uncomment if needed: ...setupInstructions.map(deserializeInstruction),
-    //         deserializeInstruction(swapInstructionPayload),
-    //         // uncomment if needed: deserializeInstruction(cleanupInstruction),
-    //     ],
-    // }).compileToV0Message(addressLookupTableAccounts);
-    // const transaction = new VersionedTransaction(messageV0);
+        return addressLookupTableAccountInfos.reduce((acc, accountInfo, index) => {
+            const addressLookupTableAddress = keys[index];
+            if (accountInfo) {
+                const addressLookupTableAccount = new AddressLookupTableAccount({
+                    key: new PublicKey(addressLookupTableAddress),
+                    state: AddressLookupTableAccount.deserialize(accountInfo.data),
+                });
+                acc.push(addressLookupTableAccount);
+            }
+
+            return acc;
+        }, new Array<AddressLookupTableAccount>());
+    };
+
+    const addressLookupTableAccounts: AddressLookupTableAccount[] = [];
+    addressLookupTableAccounts.push(...(await getAddressLookupTableAccounts(addressLookupTableAddresses)));
+
+    const blockhash = (await connection.getLatestBlockhash()).blockhash;
+    const messageV0 = new TransactionMessage({
+        payerKey: feePayer.publicKey,
+        recentBlockhash: blockhash,
+        instructions: [
+            ...computeBudgetInstructions.map(deserializeInstruction),
+            ...setupInstructions.map(deserializeInstruction),
+            deserializeInstruction(swapInstructionPayload),
+            deserializeInstruction(cleanupInstruction),
+        ],
+    }).compileToV0Message(addressLookupTableAccounts);
+
+    const transaction = new VersionedTransaction(messageV0);
 
     // let feeBurnInstruction: TransactionInstruction | undefined;
     // let feeTransferInstruction: TransactionInstruction | undefined;
@@ -189,31 +208,13 @@ export async function buildWhirlpoolsSwapToSOL(
     //     );
     // }
 
-    // const instructions: TransactionInstruction[] = [
-    //     ...computeBudgetInstructions,
-    //     ...setupInstructions,
-    //     swapInstruction,
-    //     cleanupInstruction,
-    // ];
-
     // if (feeBurnInstruction) instructions.unshift(feeBurnInstruction);
     // if (feeTransferInstruction) instructions.unshift(feeTransferInstruction);
 
-    const transaction = new Transaction({
-        feePayer: feePayer.publicKey,
-        ...(await connection.getLatestBlockhash()),
-    })
-        .add(...computeBudgetInstructions.map(deserializeInstruction))
-        .add(...setupInstructions.map(deserializeInstruction))
-        .add(deserializeInstruction(swapInstructionPayload))
-        .add(deserializeInstruction(cleanupInstruction));
-
-    await simulateRawTransaction(connection, transaction.serialize({ verifySignatures: false }));
-
-    let messageToken: any;
+    await simulateV0Transaction(connection, transaction);
+    let messageToken: string;
     try {
-        // const compiled
-        messageToken = new MessageToken(whirlpools.MESSAGE_TOKEN_KEY, transaction.compileMessage(), feePayer).compile();
+        messageToken = new MessageToken(MESSAGE_TOKEN_KEY, transaction.message, feePayer).compile();
     } catch (e) {
         console.log('Error creating token');
         throw e;
