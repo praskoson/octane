@@ -24,7 +24,10 @@ export async function simulateV0Transaction(
     const simulated = await Connection.prototype.simulateTransaction.call(connection, versionedTransaction, {
         sigVerify: false,
     });
-    if (simulated.value.err) throw new Error('Simulation error');
+    if (simulated.value.err) {
+        console.log(simulated);
+        throw new Error('Simulation error');
+    }
 
     return simulated.value;
 }

@@ -1,9 +1,16 @@
-import { NATIVE_MINT, getAssociatedTokenAddress } from '@solana/spl-token';
+import {
+    NATIVE_MINT,
+    getAssociatedTokenAddress,
+    createAssociatedTokenAccountIdempotentInstruction,
+    getAssociatedTokenAddressSync,
+    createCloseAccountInstruction,
+} from '@solana/spl-token';
 import {
     AddressLookupTableAccount,
     Connection,
     Keypair,
     PublicKey,
+    SystemProgram,
     TransactionInstruction,
     TransactionMessage,
     VersionedTransaction,
@@ -130,9 +137,9 @@ export async function buildWhirlpoolsSwapToSOL(
     }
     const {
         computeBudgetInstructions, // The necessary instructions to setup the compute budget.
-        setupInstructions, // Setup missing ATA for the users.
+        // setupInstructions, // Setup missing ATA for the users.
         swapInstruction: swapInstructionPayload, // The actual swap instruction.
-        cleanupInstruction, // Unwrap the SOL if `wrapAndUnwrapSol = true`.
+        // cleanupInstruction, // Unwrap the SOL if `wrapAndUnwrapSol = true`.
         addressLookupTableAddresses,
     } = instructions;
 
@@ -175,15 +182,49 @@ export async function buildWhirlpoolsSwapToSOL(
     const addressLookupTableAccounts: AddressLookupTableAccount[] = [];
     addressLookupTableAccounts.push(...(await getAddressLookupTableAccounts(addressLookupTableAddresses)));
 
+    // let setupTopupInstruction: TransactionInstruction[] = [];
+    // if (setupInstructions.length > 0) {
+    //     setupTopupInstruction.push(
+    //         SystemProgram.transfer({
+    //             fromPubkey: feePayer.publicKey,
+    //             toPubkey: user,
+    //             lamports: LAMPORTS_PER_ATA * setupInstructions.length,
+    //         })
+    //     );
+    // }
+
+    // let setupRepayInstruction: TransactionInstruction[] = [];
+    // if (setupInstructions.length > 0) {
+    //     setupRepayInstruction.push(
+    //         SystemProgram.transfer({
+    //             fromPubkey: user,
+    //             toPubkey: feePayer.publicKey,
+    //             lamports: LAMPORTS_PER_ATA * setupInstructions.length,
+    //         })
+    //     );
+    // }
+    const LAMPORTS_PER_ATA = 2039280;
+    const nativeAta = getAssociatedTokenAddressSync(NATIVE_MINT, user);
+    const setupAlternateIx = createAssociatedTokenAccountIdempotentInstruction(
+        feePayer.publicKey,
+        nativeAta,
+        user,
+        NATIVE_MINT
+    );
+    const cleanupAlternateIx = [
+        createCloseAccountInstruction(nativeAta, user, user),
+        SystemProgram.transfer({ fromPubkey: user, toPubkey: feePayer.publicKey, lamports: LAMPORTS_PER_ATA }),
+    ];
+
     const blockhash = (await connection.getLatestBlockhash()).blockhash;
     const messageV0 = new TransactionMessage({
         payerKey: feePayer.publicKey,
         recentBlockhash: blockhash,
         instructions: [
             ...computeBudgetInstructions.map(deserializeInstruction),
-            ...setupInstructions.map(deserializeInstruction),
+            setupAlternateIx,
             deserializeInstruction(swapInstructionPayload),
-            deserializeInstruction(cleanupInstruction),
+            ...cleanupAlternateIx,
         ],
     }).compileToV0Message(addressLookupTableAccounts);
 
@@ -210,7 +251,6 @@ export async function buildWhirlpoolsSwapToSOL(
 
     // if (feeBurnInstruction) instructions.unshift(feeBurnInstruction);
     // if (feeTransferInstruction) instructions.unshift(feeTransferInstruction);
-
     await simulateV0Transaction(connection, transaction);
     let messageToken: string;
     try {
