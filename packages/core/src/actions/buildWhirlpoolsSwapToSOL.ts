@@ -182,27 +182,6 @@ export async function buildWhirlpoolsSwapToSOL(
     const addressLookupTableAccounts: AddressLookupTableAccount[] = [];
     addressLookupTableAccounts.push(...(await getAddressLookupTableAccounts(addressLookupTableAddresses)));
 
-    // let setupTopupInstruction: TransactionInstruction[] = [];
-    // if (setupInstructions.length > 0) {
-    //     setupTopupInstruction.push(
-    //         SystemProgram.transfer({
-    //             fromPubkey: feePayer.publicKey,
-    //             toPubkey: user,
-    //             lamports: LAMPORTS_PER_ATA * setupInstructions.length,
-    //         })
-    //     );
-    // }
-
-    // let setupRepayInstruction: TransactionInstruction[] = [];
-    // if (setupInstructions.length > 0) {
-    //     setupRepayInstruction.push(
-    //         SystemProgram.transfer({
-    //             fromPubkey: user,
-    //             toPubkey: feePayer.publicKey,
-    //             lamports: LAMPORTS_PER_ATA * setupInstructions.length,
-    //         })
-    //     );
-    // }
     const LAMPORTS_PER_ATA = 2039280;
     const nativeAta = getAssociatedTokenAddressSync(NATIVE_MINT, user);
     const setupAlternateIx = createAssociatedTokenAccountIdempotentInstruction(
@@ -211,13 +190,33 @@ export async function buildWhirlpoolsSwapToSOL(
         user,
         NATIVE_MINT
     );
-    const cleanupAlternateIx = [
+    let cleanupAlternateIx = [
         createCloseAccountInstruction(nativeAta, user, user),
         SystemProgram.transfer({ fromPubkey: user, toPubkey: feePayer.publicKey, lamports: LAMPORTS_PER_ATA }),
     ];
 
     const blockhash = (await connection.getLatestBlockhash()).blockhash;
-    const messageV0 = new TransactionMessage({
+    let messageV0 = new TransactionMessage({
+        payerKey: feePayer.publicKey,
+        recentBlockhash: blockhash,
+        instructions: [
+            ...computeBudgetInstructions.map(deserializeInstruction),
+            setupAlternateIx,
+            deserializeInstruction(swapInstructionPayload),
+            ...cleanupAlternateIx,
+        ],
+    }).compileToV0Message(addressLookupTableAccounts);
+
+    const fee = await connection.getFeeForMessage(messageV0, 'confirmed');
+    cleanupAlternateIx = [
+        createCloseAccountInstruction(nativeAta, user, user),
+        SystemProgram.transfer({
+            fromPubkey: user,
+            toPubkey: feePayer.publicKey,
+            lamports: LAMPORTS_PER_ATA + (fee.value || 0),
+        }),
+    ];
+    messageV0 = new TransactionMessage({
         payerKey: feePayer.publicKey,
         recentBlockhash: blockhash,
         instructions: [
