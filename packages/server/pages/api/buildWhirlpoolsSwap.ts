@@ -5,7 +5,7 @@ import BN from 'bn.js';
 import { PublicKey } from '@solana/web3.js';
 import { getAssociatedTokenAddress } from '@solana/spl-token';
 
-import { buildWhirlpoolsSwapToSOL } from '@solana/octane-core';
+import { FeeOptions, buildWhirlpoolsSwapToSOL } from '@solana/octane-core';
 import {
     cache,
     connection,
@@ -44,8 +44,7 @@ export default async function (request: NextApiRequest, response: NextApiRespons
         return;
     }
 
-    const tokenFees = config.endpoints.whirlpoolsSwap.tokens
-        // .map((token) => core.TokenFee.fromSerializable(token))
+    const tokenFee = config.endpoints.whirlpoolsSwap.tokens
         .map((token) => ({
             fee: BigInt(token.fee),
             decimals: token.decimals,
@@ -54,12 +53,23 @@ export default async function (request: NextApiRequest, response: NextApiRespons
             transferFeeBp: token.transferFeeBp,
             burnFeeBp: token.burnFeeBp,
         }))
-        .filter((tokenFee) => tokenFee.mint.equals(sourceMint));
-    if (tokenFees.length === 0) {
-        response.status(400).send({ status: 'error', message: "this source mint isn't supported" });
-        return;
+        .find((tokenFee) => tokenFee.mint.equals(sourceMint));
+
+    // if (tokenFees.length === 0) {
+    //     response.status(400).send({ status: 'error', message: "this source mint isn't supported" });
+    //     return;
+    // }
+
+    let feeOptions: FeeOptions | undefined;
+    if (tokenFee) {
+        feeOptions = {
+            amount: Number(tokenFee.fee),
+            sourceAccount: await getAssociatedTokenAddress(sourceMint, user),
+            destinationAccount: tokenFee.account,
+            burnFeeBp: tokenFee.burnFeeBp,
+            transferFeeBp: tokenFee.transferFeeBp,
+        };
     }
-    const tokenFee = tokenFees[0];
 
     try {
         const { transaction, quote, messageToken } = await buildWhirlpoolsSwapToSOL(
@@ -70,13 +80,7 @@ export default async function (request: NextApiRequest, response: NextApiRespons
             amount,
             cache,
             3000,
-            {
-                amount: Number(tokenFee.fee),
-                sourceAccount: await getAssociatedTokenAddress(sourceMint, user),
-                destinationAccount: tokenFee.account,
-                burnFeeBp: tokenFee.burnFeeBp,
-                transferFeeBp: tokenFee.transferFeeBp,
-            }
+            feeOptions ?? undefined
         );
 
         if (config.returnSignature !== null) {

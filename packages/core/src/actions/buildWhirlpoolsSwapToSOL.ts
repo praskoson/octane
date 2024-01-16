@@ -4,6 +4,7 @@ import {
     createAssociatedTokenAccountIdempotentInstruction,
     getAssociatedTokenAddressSync,
     createCloseAccountInstruction,
+    createBurnInstruction,
 } from '@solana/spl-token';
 import {
     AddressLookupTableAccount,
@@ -103,10 +104,8 @@ export async function buildWhirlpoolsSwapToSOL(
     }
 
     const burnFee = feeOptions?.burnFeeBp ? amount.muln(feeOptions.burnFeeBp).divn(10000) : new BN(0);
-    const transferFee = feeOptions?.transferFeeBp ? amount.muln(feeOptions.transferFeeBp).divn(10000) : new BN(0);
-    const swapAmount = amount.sub(burnFee).sub(transferFee);
+    const swapAmount = amount.sub(burnFee);
 
-    // Swapping SOL to USDC with input 0.1 SOL and 0.5% slippage
     const outputMint = 'So11111111111111111111111111111111111111112';
     const params = new URLSearchParams();
     params.append('inputMint', sourceMint.toString());
@@ -118,6 +117,8 @@ export async function buildWhirlpoolsSwapToSOL(
     url.search = params.toString();
 
     const quoteResponse = await (await fetch(url)).json();
+    const solFeeRatio = 250; // bps
+    const platformFee = Math.round(Number(quoteResponse.outAmount) * (solFeeRatio / 10000));
     const instructions = await (
         await fetch('https://quote-api.jup.ag/v6/swap-instructions', {
             method: 'POST',
@@ -128,6 +129,8 @@ export async function buildWhirlpoolsSwapToSOL(
                 quoteResponse,
                 userPublicKey: user.toString(),
                 wrapAndUnwrapSol: true,
+                dynamicComputeUnitLimit: true,
+                prioritizationFeeLamports: 'auto',
             }),
         })
     ).json();
@@ -190,10 +193,28 @@ export async function buildWhirlpoolsSwapToSOL(
         user,
         NATIVE_MINT
     );
+    let feeBurnInstruction: TransactionInstruction | undefined;
+
+    if (feeOptions !== undefined && burnFee.gtn(0)) {
+        feeBurnInstruction = createBurnInstruction(
+            feeOptions.sourceAccount,
+            sourceMint,
+            user,
+            BigInt(burnFee.toString())
+        );
+    }
+
     let cleanupAlternateIx = [
         createCloseAccountInstruction(nativeAta, user, user),
-        SystemProgram.transfer({ fromPubkey: user, toPubkey: feePayer.publicKey, lamports: LAMPORTS_PER_ATA }),
+        SystemProgram.transfer({
+            fromPubkey: user,
+            toPubkey: feePayer.publicKey,
+            lamports: LAMPORTS_PER_ATA + platformFee,
+        }),
     ];
+    if (feeBurnInstruction) {
+        cleanupAlternateIx.push(feeBurnInstruction);
+    }
 
     const blockhash = (await connection.getLatestBlockhash()).blockhash;
     let messageV0 = new TransactionMessage({
@@ -207,15 +228,20 @@ export async function buildWhirlpoolsSwapToSOL(
         ],
     }).compileToV0Message(addressLookupTableAccounts);
 
-    const fee = await connection.getFeeForMessage(messageV0, 'confirmed');
+    const transactionFee = await connection.getFeeForMessage(messageV0, 'confirmed');
+
     cleanupAlternateIx = [
         createCloseAccountInstruction(nativeAta, user, user),
         SystemProgram.transfer({
             fromPubkey: user,
             toPubkey: feePayer.publicKey,
-            lamports: LAMPORTS_PER_ATA + (fee.value || 0),
+            lamports: LAMPORTS_PER_ATA + platformFee + (transactionFee?.value || 0),
         }),
     ];
+    if (feeBurnInstruction) {
+        cleanupAlternateIx.push(feeBurnInstruction);
+    }
+
     messageV0 = new TransactionMessage({
         payerKey: feePayer.publicKey,
         recentBlockhash: blockhash,
@@ -229,27 +255,6 @@ export async function buildWhirlpoolsSwapToSOL(
 
     const transaction = new VersionedTransaction(messageV0);
 
-    // let feeBurnInstruction: TransactionInstruction | undefined;
-    // let feeTransferInstruction: TransactionInstruction | undefined;
-    // if (feeOptions !== undefined && burnFee.gtn(0)) {
-    //     feeBurnInstruction = createBurnInstruction(
-    //         feeOptions.sourceAccount,
-    //         sourceMint,
-    //         user,
-    //         BigInt(burnFee.toString())
-    //     );
-    // }
-    // if (feeOptions !== undefined && transferFee.gtn(0)) {
-    //     feeTransferInstruction = createTransferInstruction(
-    //         feeOptions.sourceAccount,
-    //         feeOptions.destinationAccount,
-    //         user,
-    //         BigInt(transferFee.toString())
-    //     );
-    // }
-
-    // if (feeBurnInstruction) instructions.unshift(feeBurnInstruction);
-    // if (feeTransferInstruction) instructions.unshift(feeTransferInstruction);
     await simulateV0Transaction(connection, transaction);
     let messageToken: string;
     try {
