@@ -111,7 +111,7 @@ export async function buildWhirlpoolsSwapToSOL(
     params.append('inputMint', sourceMint.toString());
     params.append('outputMint', outputMint);
     params.append('amount', swapAmount.toString()); // Convert number to string
-    // params.append('slippageBps', slippageBps.toString());
+    params.append('slippageBps', '500');
 
     const url = new URL('https://quote-api.jup.ag/v6/quote');
     url.search = params.toString();
